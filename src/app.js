@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const tenantRoutes = require('./modules/tenants/tenant.routes');
+const menuRoutes = require('./modules/menu/menu.routes');
 
 // Inicializar la app
 const app = express();
@@ -29,6 +30,7 @@ app.use(express.json());
 
 // --- RUTAS (Las importaremos luego) ---
 app.use('/api/tenants', tenantRoutes);
+app.use('/api/menu', menuRoutes);
 
 
 // Ruta de prueba para verificar que el servidor respira
