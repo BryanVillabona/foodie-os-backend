@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Order = require('./order.model');
 
 // @desc    Crear un nuevo pedido (Cliente)
@@ -70,6 +71,46 @@ exports.updateOrderStatus = async (req, res) => {
     });
 
     res.status(200).json({ success: true, data: order });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Obtener resumen de ventas HOY
+// @route   GET /api/orders/:tenantId/stats
+exports.getDailyStats = async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    
+    // Calcular inicio y fin del día actual
+    const startOfDay = new Date();
+    startOfDay.setHours(0,0,0,0);
+    
+    const endOfDay = new Date();
+    endOfDay.setHours(23,59,59,999);
+
+    const stats = await Order.aggregate([
+      { 
+        $match: { 
+          tenantId: new mongoose.Types.ObjectId(tenantId),
+          status: { $ne: 'CANCELLED' }, // Ignorar cancelados
+          createdAt: { $gte: startOfDay, $lte: endOfDay }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalVentas: { $sum: "$total" }, // Sumar campo 'total'
+          cantidadPedidos: { $sum: 1 }     // Contar pedidos
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: stats.length > 0 ? stats[0] : { totalVentas: 0, cantidadPedidos: 0 }
+    });
+
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
