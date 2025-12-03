@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const tenantRoutes = require('./modules/tenants/tenant.routes');
 
 // Inicializar la app
 const app = express();
@@ -27,6 +28,9 @@ app.use(express.json());
 
 
 // --- RUTAS (Las importaremos luego) ---
+app.use('/api/tenants', tenantRoutes);
+
+
 // Ruta de prueba para verificar que el servidor respira
 app.get('/', (req, res) => {
   res.send('API FoodieOS funcionando correctamente 🚀');
