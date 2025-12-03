@@ -5,6 +5,7 @@ const morgan = require('morgan');
 const tenantRoutes = require('./modules/tenants/tenant.routes');
 const menuRoutes = require('./modules/menu/menu.routes');
 const orderRoutes = require('./modules/orders/order.routes');
+const authRoutes = require('./modules/auth/auth.routes');
 
 // Inicializar la app
 const app = express();
@@ -33,6 +34,7 @@ app.use(express.json());
 app.use('/api/tenants', tenantRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/auth', authRoutes);
 
 
 // Ruta de prueba para verificar que el servidor respira
