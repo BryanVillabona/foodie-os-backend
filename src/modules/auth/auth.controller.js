@@ -1,16 +1,16 @@
 const User = require('./user.model');
 const jwt = require('jsonwebtoken');
 
-// Función auxiliar para crear Token
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
 };
 
 // @desc    Registrar un nuevo usuario (Dueño)
 // @route   POST /api/auth/register
-exports.registerUser = async (req, res) => {
+exports.registerUser = async (req, res, next) => { // Agregamos next
   try {
-    const { name, email, password, role } = req.body;
+    // CORRECCIÓN FINAL: Permitir recibir tenantId
+    const { name, email, password, role, tenantId } = req.body;
     
     // Verificar si ya existe
     const userExists = await User.findOne({ email });
@@ -18,26 +18,34 @@ exports.registerUser = async (req, res) => {
       return res.status(400).json({ success: false, message: 'El usuario ya existe' });
     }
 
-    // Crear usuario
-    const user = await User.create({ name, email, password, role });
+    // Crear usuario vinculándolo al restaurante (si aplica)
+    const user = await User.create({ 
+      name, 
+      email, 
+      password, 
+      role, 
+      tenantId // <-- VITAL: Ahora guardamos la referencia
+    });
 
     res.status(201).json({
       success: true,
       token: generateToken(user._id),
-      user: { id: user._id, name: user.name, email: user.email, role: user.role }
+      user: { 
+        id: user._id, 
+        name: user.name, 
+        email: user.email, 
+        role: user.role,
+        tenantId: user.tenantId // Devolvemos el dato para confirmar
+      }
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    next(error); // Usar el middleware de errores
   }
 };
 
-// @desc    Iniciar Sesión
-// @route   POST /api/auth/login
-exports.loginUser = async (req, res) => {
+exports.loginUser = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-
-    // Verificar email (incluyendo el campo password que estaba oculto)
     const user = await User.findOne({ email }).select('+password');
     
     if (!user || !(await user.matchPassword(password))) {
@@ -56,6 +64,6 @@ exports.loginUser = async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    next(error);
   }
 };
