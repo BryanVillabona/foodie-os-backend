@@ -6,6 +6,7 @@ const tenantRoutes = require('./modules/tenants/tenant.routes');
 const menuRoutes = require('./modules/menu/menu.routes');
 const orderRoutes = require('./modules/orders/order.routes');
 const authRoutes = require('./modules/auth/auth.routes');
+const errorHandler = require('./core/middlewares/error.middleware');
 
 // Inicializar la app
 const app = express();
@@ -44,10 +45,11 @@ app.get('/', (req, res) => {
 
 // Manejo de errores 404 (Ruta no encontrada)
 app.use((req, res, next) => {
-  res.status(404).json({
-    success: false,
-    message: 'Ruta no encontrada en el servidor'
-  });
+    const error = new Error('Ruta no encontrada');
+    error.statusCode = 404;
+    next(error);
 });
+
+app.use(errorHandler);
 
 module.exports = app;

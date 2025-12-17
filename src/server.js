@@ -1,14 +1,12 @@
-require('dotenv').config(); // Cargar variables de entorno primero que todo
-const http = require('http'); // Servidor nativo de Node
-const { Server } = require('socket.io'); // Servidor de WebSockets
-const app = require('./app'); // Importamos la configuración de Express
-const connectDB = require('./config/db.js'); // Importamos conexión a DB
+require('dotenv').config();
+const http = require('http');
+const { Server } = require('socket.io');
+const jwt = require('jsonwebtoken'); 
+const app = require('./app');
+const connectDB = require('./config/db.js');
 
-// 1. Crear servidor HTTP basándonos en Express
-// Necesitamos esto para que Socket.io y Express compartan el mismo puerto
 const server = http.createServer(app);
 
-// 2. Configurar Socket.io (Tiempo Real)
 const io = new Server(server, {
   cors: {
     origin: process.env.CLIENT_URL || "*",
@@ -16,36 +14,63 @@ const io = new Server(server, {
   }
 });
 
-// Escuchar conexiones de sockets (Lo usaremos más adelante para el KDS)
+// --- CORRECCIÓN #3: Middleware de Seguridad para Sockets ---
+io.use((socket, next) => {
+  // El frontend debe enviar: socket = io(url, { auth: { token: "..." } })
+  const token = socket.handshake.auth.token;
+
+  if (token) {
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+      if (err) return next(new Error('Autenticación fallida en Socket'));
+      
+      // Guardamos datos del usuario en el socket
+      socket.user = decoded; 
+      next();
+    });
+  } else {
+    // Permitir conexiones públicas (Clientes escaneando QR)
+    // Pero NO dejarlos entrar a salas privadas luego
+    socket.user = { role: 'GUEST' }; 
+    next();
+  }
+});
+
 io.on('connection', (socket) => {
-  console.log('🔌 Nuevo cliente conectado vía Socket.io:', socket.id);
+  console.log(`🔌 Conexión: ${socket.id} | Rol: ${socket.user?.role || 'Guest'}`);
+
+  // Evento para unirse a la sala de un restaurante
+  socket.on('join_tenant_room', (tenantId) => {
+    // Si es GUEST (Cliente), solo puede escuchar cambios de SU pedido (esto lo validaremos en front),
+    // pero para escuchar TODO el restaurante (KDS), debe ser Staff.
+    
+    if(socket.user.role === 'GUEST') {
+        // Los clientes se unen a su propio canal de pedido (no al del restaurante entero)
+        // Lógica futura: socket.join(`order_${orderId}`);
+        console.log(`Cliente anónimo intentó unirse a sala privada ${tenantId} - Bloqueado`);
+        return; 
+    }
+
+    socket.join(tenantId);
+    console.log(`👨‍🍳 Staff unido a sala de cocina: ${tenantId}`);
+  });
   
   socket.on('disconnect', () => {
-    console.log('❌ Cliente desconectado:', socket.id);
+    // console.log('❌ Cliente desconectado:', socket.id);
   });
 });
 
-// Inyectar 'io' en la app para usarlo en los controladores (req.io)
-// Esto nos permitirá emitir eventos desde cualquier ruta de la API
 app.set('socketio', io);
 
-// 3. Función de arranque
 const startServer = async () => {
   try {
-    // Primero conectamos BD
     await connectDB();
-
-    // Luego levantamos el servidor
     const PORT = process.env.PORT || 5000;
     server.listen(PORT, () => {
-      console.log(`\n🚀 Servidor FoodieOS corriendo en modo ${process.env.NODE_ENV} en puerto ${PORT}`);
-      console.log(`🔗 http://localhost:${PORT}`);
+      console.log(`\n🚀 Servidor FoodieOS corriendo en puerto ${PORT}`);
     });
-
   } catch (error) {
-    console.error('Error fatal al iniciar el servidor:', error);
+    console.error('Error fatal:', error);
   }
 };
 
-// Iniciar
 startServer();

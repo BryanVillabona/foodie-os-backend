@@ -3,17 +3,18 @@ const Order = require('./order.model');
 
 // @desc    Crear un nuevo pedido (Cliente)
 // @route   POST /api/orders
-exports.createOrder = async (req, res) => {
+exports.createOrder = async (req, res, next) => {
   try {
-    // 1. Guardar en Base de Datos
+    // CORRECCIÓN #4: Sanitización Financiera
+    // Aseguramos que el total tenga máximo 2 decimales
+    if (req.body.total) {
+        req.body.total = Math.round(req.body.total * 100) / 100;
+    }
+
     const order = await Order.create(req.body);
 
-    // 2. TIEMPO REAL: Notificar a la Cocina (KDS) y Caja
-    // Obtenemos la instancia de Socket.io
+    // TIEMPO REAL: Notificar a la Cocina (KDS)
     const io = req.app.get('socketio');
-    
-    // Emitimos un evento a la "Sala" específica de este restaurante
-    // (En el frontend, la cocina se unirá a la sala: socket.join(tenantId))
     io.to(order.tenantId.toString()).emit('new_order', order);
 
     res.status(201).json({
@@ -21,50 +22,49 @@ exports.createOrder = async (req, res) => {
       data: order
     });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    next(error); // ✅ Correcto: Pasa el error al middleware central
   }
 };
 
 // @desc    Obtener pedidos de un restaurante (Para el KDS y Caja)
 // @route   GET /api/orders/:tenantId
-exports.getOrdersByTenant = async (req, res) => {
+exports.getOrdersByTenant = async (req, res, next) => { // <-- Agregamos 'next' aquí
   try {
     const { tenantId } = req.params;
-    // Traemos pedidos que NO estén cancelados ni entregados (solo activos para cocina)
-    // OJO: Luego agregaremos filtros si queremos ver el historial
+    
     const orders = await Order.find({ 
       tenantId,
-      status: { $ne: 'CANCELLED' } // $ne significa "Not Equal" (No igual a)
-    }).sort({ createdAt: -1 }); // Los más nuevos primero
+      status: { $ne: 'CANCELLED' } 
+    }).sort({ createdAt: -1 });
 
     res.status(200).json({ success: true, data: orders });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    next(error); // ✅ Usamos next(error) en lugar de res.status(500)...
   }
 };
 
 // @desc    Actualizar estado (Cocinero mueve tarjeta)
 // @route   PUT /api/orders/:id/status
-exports.updateOrderStatus = async (req, res) => {
+exports.updateOrderStatus = async (req, res, next) => { // <-- Agregamos 'next' aquí
   try {
-    const { status } = req.body; // Esperamos: { "status": "PREPARING" }
+    const { status } = req.body;
     const { id } = req.params;
 
     const order = await Order.findByIdAndUpdate(
       id, 
       { status },
-      { new: true } // Para que nos devuelva el objeto actualizado
+      { new: true } 
     );
 
     if (!order) {
+      // Nota: Para errores 404 manuales, también podrías usar next, 
+      // pero responder directo aquí es aceptable para validaciones simples.
       return res.status(404).json({ success: false, message: 'Pedido no encontrado' });
     }
 
-    // TIEMPO REAL: Notificar al Cliente (Para que su celular vibre o cambie de color)
+    // TIEMPO REAL: Notificar al Cliente
     const io = req.app.get('socketio');
     
-    // Emitimos a la sala del restaurante, pero el frontend filtrará por ID de pedido
-    // O podríamos emitir a una sala específica del pedido: io.to(order._id).emit(...)
     io.to(order.tenantId.toString()).emit('order_status_update', {
       orderId: order._id,
       status: order.status
@@ -72,13 +72,13 @@ exports.updateOrderStatus = async (req, res) => {
 
     res.status(200).json({ success: true, data: order });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    next(error); // ✅ Error al middleware
   }
 };
 
 // @desc    Obtener resumen de ventas HOY
 // @route   GET /api/orders/:tenantId/stats
-exports.getDailyStats = async (req, res) => {
+exports.getDailyStats = async (req, res, next) => { // <-- Agregamos 'next' aquí
   try {
     const { tenantId } = req.params;
     
@@ -93,15 +93,15 @@ exports.getDailyStats = async (req, res) => {
       { 
         $match: { 
           tenantId: new mongoose.Types.ObjectId(tenantId),
-          status: { $ne: 'CANCELLED' }, // Ignorar cancelados
+          status: { $ne: 'CANCELLED' }, 
           createdAt: { $gte: startOfDay, $lte: endOfDay }
         }
       },
       {
         $group: {
           _id: null,
-          totalVentas: { $sum: "$total" }, // Sumar campo 'total'
-          cantidadPedidos: { $sum: 1 }     // Contar pedidos
+          totalVentas: { $sum: "$total" },
+          cantidadPedidos: { $sum: 1 }
         }
       }
     ]);
@@ -112,6 +112,6 @@ exports.getDailyStats = async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    next(error); // ✅ Error al middleware
   }
 };

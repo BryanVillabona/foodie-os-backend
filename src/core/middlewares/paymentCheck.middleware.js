@@ -2,39 +2,47 @@ const Tenant = require('../../modules/tenants/tenant.model');
 
 exports.checkPaymentStatus = async (req, res, next) => {
   try {
-    // Asumimos que la URL viene con el slug (ej: /api/tenants/el-brayan)
-    // O que el tenantId viene en el body.
-    // Para el menú público, usamos el slug.
-    
-    const { slug } = req.params; 
+    let tenant = null;
 
-    if (!slug) return next(); // Si no es una ruta con slug, ignorar
-
-    const tenant = await Tenant.findOne({ slug }).select('paymentDueDate isActive');
-
-    if (!tenant) {
-        return res.status(404).json({ message: "Restaurante no encontrado" });
+    // CASO A: Ruta Pública (viene el slug en la URL)
+    if (req.params.slug) {
+      tenant = await Tenant.findOne({ slug: req.params.slug });
+    } 
+    // CASO B: Ruta Interna (viene tenantId en params)
+    else if (req.params.tenantId) {
+      tenant = await Tenant.findById(req.params.tenantId);
+    }
+    // CASO C: Usuario Logueado (Dueño operando su panel)
+    else if (req.user && req.user.tenantId) {
+      tenant = await Tenant.findById(req.user.tenantId);
     }
 
-    // 1. Verificar si está activo manualmente
+    if (!tenant) {
+      return res.status(404).json({ message: "Restaurante no encontrado" });
+    }
+    
+    // 1. Kill Switch Manual (Admin lo apagó)
     if (!tenant.isActive) {
       return res.status(403).json({ 
         success: false, 
-        message: 'SERVICIO SUSPENDIDO: Contacte al proveedor.' 
+        message: 'SERVICIO SUSPENDIDO: Contacte a Soporte.' 
       });
     }
 
-    // 2. Verificar fecha de pago (KILL SWITCH AUTOMÁTICO)
+    // 2. Kill Switch Automático (Falta de Pago)
     const today = new Date();
     if (tenant.paymentDueDate < today) {
+      console.log(`[ALERTA DE PAGO] Tenant ${tenant.name} vencido desde ${tenant.paymentDueDate}`);
       return res.status(402).json({ 
         success: false, 
-        message: 'SUBSCRIPCIÓN VENCIDA: Por favor realice el pago para reactivar el servicio.' 
+        message: 'SUBSCRIPCIÓN VENCIDA. El servicio se reactivará al procesar el pago.' 
       });
     }
 
-    next(); // Todo pagado, disfrute su comida
+    req.tenant = tenant;
+    next();
+
   } catch (error) {
-    res.status(500).json({ message: "Error verificando pago" });
+    res.status(500).json({ message: "Error verificando estado de cuenta" });
   }
 };
