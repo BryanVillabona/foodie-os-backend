@@ -50,3 +50,14 @@ exports.getTenantPublic = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+exports.getTenantById = async (req, res, next) => {
+  try {
+    const tenant = await Tenant.findById(req.params.id).select('name config plan'); // Solo info segura
+    if (!tenant) return res.status(404).json({ message: 'Restaurante no encontrado' });
+    
+    res.status(200).json({ success: true, data: tenant });
+  } catch (error) {
+    next(error);
+  }
+};

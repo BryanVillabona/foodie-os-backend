@@ -9,4 +9,7 @@ router.post('/', createTenant); // Crear (Podrías protegerla con una clave maes
 // LEER (Público): AQUÍ PONEMOS EL CANDADO DE PAGO
 router.get('/:slug', checkPaymentStatus, getTenantPublic); 
 
+// Ruta Pública para obtener config (WhatsApp) por ID
+router.get('/:id', getTenantById);
+
 module.exports = router;
